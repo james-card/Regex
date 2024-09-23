@@ -70,7 +70,7 @@ static inline bool isMatchingRange(unsigned char character, const unsigned char 
 static bool isMatchingMetaChar(unsigned char character, const unsigned char *metaCharString);
 
 
-void regexCompile_(Regex *regex, const char *pattern, size_t patternLength, ...) {
+void regexCompileLength(Regex *regex, const char *pattern, size_t patternLength) {
     if (regex == NULL) return;
     regex->isPatternValid = true;
     regex->errorMessage = "Success";
@@ -148,7 +148,11 @@ void regexCompile_(Regex *regex, const char *pattern, size_t patternLength, ...)
     setRegexPatternType(REGEX_END_OF_PATTERN, &regexCompiler);
 }
 
-bool regexMatch(Regex *regex, const char *text, Matcher *matcher) {
+void regexCompile(Regex *regex, const char *pattern) {
+    regexCompileLength(regex, pattern, 0);
+}
+
+bool regexMatchMatcher(Regex *regex, const char *text, Matcher *matcher) {
     matcher->foundAtIndex = 0;
     matcher->matchLength = 0;
     matcher->isFound = false;
@@ -174,6 +178,11 @@ bool regexMatch(Regex *regex, const char *text, Matcher *matcher) {
     return matcher->isFound;
 }
 
+Matcher regexMatch(Regex *regex, const char *text) {
+    Matcher matcher;
+    regexMatchMatcher(regex, text, &matcher);
+    return matcher;
+}
 
 static inline void setBeginMetaChar(RegexCompiler *regexCompiler) {
     regexCompiler->isQuantifiable = false;
@@ -668,7 +677,7 @@ uint64_t substitute_(const char *haystack, const char *pattern,
     }
 
     Matcher matcher;
-    regexMatch(&regex, &haystack[haystackPosition], &matcher);
+    regexMatchMatcher(&regex, &haystack[haystackPosition], &matcher);
     while (matcher.isFound) {
         copyLength = (haystackPosition + matcher.foundAtIndex) - haystackPosition;
         if ((bufferPosition + copyLength) < bufferLength) {
@@ -704,7 +713,7 @@ uint64_t substitute_(const char *haystack, const char *pattern,
         haystackPosition += matcher.matchLength;
 
         if (greedy == true) {
-            regexMatch(&regex, &haystack[haystackPosition], &matcher);
+            regexMatchMatcher(&regex, &haystack[haystackPosition], &matcher);
         } else {
             break;
         }
@@ -898,6 +907,8 @@ uint64_t substituteMatch_(const char *haystack, const char *pattern,
     uint64_t copyLength = 0;
     uint64_t numIterations = 0;
     uint64_t lastMatchPosition = 0;
+    Regex regex;
+    Matcher matcher;
 
     if ((haystack == NULL) || (pattern == NULL)
         || (replacement == NULL) || (buffer == NULL)
@@ -942,8 +953,7 @@ uint64_t substituteMatch_(const char *haystack, const char *pattern,
               storeMatch = true;
             }
 
-            Regex regex;
-            regexCompile(&regex, pattern, patternLength);
+            regexCompileLength(&regex, pattern, patternLength);
             if (!regex.isPatternValid) {
                 if (successful != NULL) {
                     *successful = false;
@@ -954,8 +964,7 @@ uint64_t substituteMatch_(const char *haystack, const char *pattern,
                 goto final;
             }
 
-            Matcher matcher;
-            regexMatch(&regex, &haystack[lastMatchPosition], &matcher);
+            regexMatchMatcher(&regex, &haystack[lastMatchPosition], &matcher);
             if (matcher.isFound) {
                 matcher.foundAtIndex += lastMatchPosition;
                 if (ii == 0) {

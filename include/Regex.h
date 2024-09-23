@@ -121,12 +121,12 @@ typedef uint64_t (*SubstituteFunction)(const char *haystack, const char *pattern
     bool *successful, const char **errorMessage, ...);
 
 // Compile regex string pattern to a regex
-void regexCompile_(Regex *regex, const char *pattern, size_t patternLength, ...);
-#define regexCompile(regex, pattern, ...) \
-    regexCompile_(regex, pattern, ##__VA_ARGS__, 0)
+void regexCompileLength(Regex *regex, const char *pattern, size_t patternLength);
+void regexCompile(Regex *regex, const char *pattern);
 
 // Find matches of the compiled pattern inside text.
-bool regexMatch(Regex *regex, const char *text, Matcher *matcher);
+bool regexMatchMatcher(Regex *regex, const char *text, Matcher *matcher);
+Matcher regexMatch(Regex *regex, const char *text);
 
 // Substitute a matched regular expression with the provided replacement using
 // the provided output buffer.
