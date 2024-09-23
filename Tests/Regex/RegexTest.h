@@ -223,7 +223,8 @@ static MunitResult regexPatternTest(const MunitParameter params[], void *data) {
         Regex regex = {0};
         RegexPatternTestObject testObject = REGEX_PATTERN_TEST_ARRAY[i];
         regexCompile(&regex, testObject.pattern);
-        Matcher matcher = regexMatch(&regex, testObject.text);
+        Matcher matcher;
+        regexMatch(&regex, testObject.text, &matcher);
 
         bool isMatchLengthValid = testObject.isOK == OK ? matcher.matchLength == testObject.matchLength : true;
         bool isFound = testObject.isOK == OK ? matcher.foundAtIndex == testObject.foundAtIndex : true;

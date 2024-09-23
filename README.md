@@ -71,7 +71,8 @@ if (!regex.isPatternValid) {
     return 1;
 }
 
-Matcher matcher = regexMatch(&regex, "ahem.. 'hello world !' ..");
+Matcher matcher;
+regexMatch(&regex, "ahem.. 'hello world !' ..", &matcher);
 printf("Is found: %s\n", matcher.isFound ? "Yes" : "No");
 printf("At index: %d\n", matcher.foundAtIndex);
 printf("Length: %d\n", matcher.matchLength);
