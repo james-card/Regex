@@ -70,6 +70,40 @@ static inline bool isMatchingRange(unsigned char character, const unsigned char 
 static bool isMatchingMetaChar(unsigned char character, const unsigned char *metaCharString);
 
 
+static inline void setCompilerChar(RegexCompiler *regexCompiler, const char *pattern, char charInPattern) {
+    switch (charInPattern) {
+        case '^':   // Meta-characters
+            setBeginMetaChar(regexCompiler);
+            break;
+        case '$':
+            setDollarEndMetaChar(regexCompiler);
+            break;
+        case '.':
+            setDotMetaChar(regexCompiler);
+            break;
+        case '*':
+            setStarMetaChar(regexCompiler, pattern);
+            break;
+        case '+':
+            setPlusMetaChar(regexCompiler, pattern);
+            break;
+        case '?':
+            setQuestionMarkMetaChar(regexCompiler);
+            break;
+        case '\\':  // Escaped characters
+            resolveEscapedCharacterClasses(regexCompiler, pattern);
+            break;
+        case '[':   // Character class
+            resolveCharacterClass(regexCompiler, pattern);
+            break;
+        case '{':   // Quantifier
+            resolveQuantification(regexCompiler, pattern);
+            break;
+        default:    // Regular characters
+            setRegularChar(regexCompiler, charInPattern);
+    }
+}
+
 void regexCompileLength(Regex *regex, const char *pattern, size_t patternLength) {
     if (regex == NULL) return;
     regex->isPatternValid = true;
@@ -92,57 +126,35 @@ void regexCompileLength(Regex *regex, const char *pattern, size_t patternLength)
     }
 
     if (patternLength == 0) {
-        const char *endLineAt = strchr(pattern, END_LINE);
-        if (endLineAt) {
-            patternLength = (size_t) (((uintptr_t) endLineAt) - ((uintptr_t) pattern));
-        } else {
-            patternLength = strlen(pattern);
-        }
-    }
+        // Go until the end of the line.
+        for (regexCompiler.patternIndex = 0;
+            (pattern[regexCompiler.patternIndex] != END_LINE)
+                && ((regexCompiler.regexIndex + 1) < MAX_REGEXP_OBJECTS);
+            regexCompiler.patternIndex++
+        ) {
+            char charInPattern = pattern[regexCompiler.patternIndex];
+            setCompilerChar(&regexCompiler, pattern, charInPattern);
 
-    for (regexCompiler.patternIndex = 0;
-        (regexCompiler.patternIndex < patternLength)
-            && ((regexCompiler.regexIndex + 1) < MAX_REGEXP_OBJECTS);
-        regexCompiler.patternIndex++
-    ) {
-        char charInPattern = pattern[regexCompiler.patternIndex];
-
-        switch (charInPattern) {
-            case '^':   // Meta-characters
-                setBeginMetaChar(&regexCompiler);
-                break;
-            case '$':
-                setDollarEndMetaChar(&regexCompiler);
-                break;
-            case '.':
-                setDotMetaChar(&regexCompiler);
-                break;
-            case '*':
-                setStarMetaChar(&regexCompiler, pattern);
-                break;
-            case '+':
-                setPlusMetaChar(&regexCompiler, pattern);
-                break;
-            case '?':
-                setQuestionMarkMetaChar(&regexCompiler);
-                break;
-            case '\\':  // Escaped characters
-                resolveEscapedCharacterClasses(&regexCompiler, pattern);
-                break;
-            case '[':   // Character class
-                resolveCharacterClass(&regexCompiler, pattern);
-                break;
-            case '{':   // Quantifier
-                resolveQuantification(&regexCompiler, pattern);
-                break;
-            default:    // Regular characters
-                setRegularChar(&regexCompiler, charInPattern);
+            if (!regex->isPatternValid) {
+                return;
+            }
+            regexCompiler.regexIndex++;
         }
+    } else {
+        // Process the number of characters specified.
+        for (regexCompiler.patternIndex = 0;
+            (regexCompiler.patternIndex < patternLength)
+                && ((regexCompiler.regexIndex + 1) < MAX_REGEXP_OBJECTS);
+            regexCompiler.patternIndex++
+        ) {
+            char charInPattern = pattern[regexCompiler.patternIndex];
+            setCompilerChar(&regexCompiler, pattern, charInPattern);
 
-        if (!regex->isPatternValid) {
-            return;
+            if (!regex->isPatternValid) {
+                return;
+            }
+            regexCompiler.regexIndex++;
         }
-        regexCompiler.regexIndex++;
     }
 
     setRegexPatternType(REGEX_END_OF_PATTERN, &regexCompiler);
@@ -665,7 +677,7 @@ uint64_t substitute_(const char *haystack, const char *pattern,
     }
 
     Regex regex;
-    regexCompile(&regex, pattern);
+    regexCompileLength(&regex, pattern, 0);
     if (!regex.isPatternValid) {
         if (successful != NULL) {
             *successful = false;
@@ -821,7 +833,7 @@ uint64_t substituteMultiple_(const char *haystack, Substitution *substitutions,
     return maxReplacementLength;
 }
 
-int getSubexpressions(const char *pattern,
+static inline int getSubexpressions(const char *pattern,
     char subexpressions[MAX_SUBEXPRESSIONS][MAX_CHAR_CLASS_LENGTH]
 ) {
     int numSubexpressions = 0;
@@ -863,7 +875,7 @@ int getSubexpressions(const char *pattern,
     return numSubexpressions;
 }
 
-int getReplacements(const char *replacementString,
+static inline int getReplacements(const char *replacementString,
     char replacements[MAX_SUBEXPRESSIONS][MAX_CHAR_CLASS_LENGTH]
 ) {
     int numReplacements = 0;
@@ -882,10 +894,10 @@ int getReplacements(const char *replacementString,
             strncpy(replacements[numReplacements], replacementString, replacementLength);
             replacements[numReplacements][replacementLength] = '\0';
             numReplacements++;
+            replacementString = backslashAt;
         }
 
-        replacementString = backslashAt + 1;
-        backslashAt = strchr(replacementString, '\\');
+        backslashAt = strchr(replacementString + 1, '\\');
     }
 
     if (*replacementString != '\0') {
@@ -945,9 +957,9 @@ uint64_t substituteMatch_(const char *haystack, const char *pattern,
         uint64_t firstMatchPosition = 0;
         for (int ii = 0; ii < numSubexpressions; ii++) {
             const char *pattern = subexpressions[ii]; // shadows input parameter
-            uint64_t patternLength = strlen(pattern);
+            size_t patternLength = strlen(pattern);
             bool storeMatch = false;
-            if ((patternLength >= 2) && (pattern[0] == '\\') && (pattern[1] == '(')) {
+            if ((pattern[0] == '\\') && (pattern[1] == '(')) {
               pattern += 2;
               patternLength -= 4;
               storeMatch = true;
@@ -1037,9 +1049,13 @@ uint64_t substituteMatch_(const char *haystack, const char *pattern,
 
             // Next, append the replacements to the output buffer.
             for (int ii = 0; ii < numReplacements; ii++) {
-                char *endPtr = replacements[ii];
-                long matchIndex = strtol(replacements[ii], &endPtr, 10);
-                if (endPtr != replacements[ii]) {
+                long matchIndex = 0;
+                char *matchIndexStart = &replacements[ii][1];
+                char *endPtr = matchIndexStart;
+                if (replacements[ii][0] == '\\') {
+                    matchIndex = strtol(matchIndexStart, &endPtr, 10);
+                }
+                if (endPtr != matchIndexStart) {
                     // matchIndex was parsed into a valid number.  Use it.
                     if (matchIndex < numMatches) {
                         copyLength = strlen(matches[matchIndex]);
